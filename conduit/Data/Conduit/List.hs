@@ -99,7 +99,7 @@ mapM_ f =
 --
 -- Since 0.3.0
 sourceList :: Monad m => [a] -> Source m a
-sourceList [] = Done Nothing ()
+sourceList [] = Done ()
 sourceList (x:xs) = HaveOutput (sourceList xs) (return ()) x
 
 -- | Ignore a certain number of values in the stream. This function is
@@ -114,13 +114,13 @@ sourceList (x:xs) = HaveOutput (sourceList xs) (return ()) x
 drop :: Monad m
      => Int
      -> Sink a m ()
-drop 0 = NeedInput (flip Done () . Just) (return ())
+drop 0 = NeedInput (Leftover (Done ())) (return ())
 drop count =
     NeedInput push (return ())
   where
     count' = count - 1
     push _
-        | count' == 0 = Done Nothing ()
+        | count' == 0 = Done ()
         | otherwise   = drop count'
 
 -- | Take some values from the stream and return as a list. If you want to
@@ -138,9 +138,9 @@ take count0 =
   where
     go count front = NeedInput (push count front) (return $ front [])
 
-    push 0 front x = Done (Just x) (front [])
+    push 0 front x = Leftover (Done (front [])) x
     push count front x
-        | count' == 0 = Done Nothing (front [x])
+        | count' == 0 = Done (front [x])
         | otherwise   = NeedInput (push count' front') (return $ front' [])
       where
         count' = count - 1
@@ -153,7 +153,7 @@ head :: Monad m => Sink a m (Maybe a)
 head =
     NeedInput push close
   where
-    push x = Done Nothing (Just x)
+    push x = Done (Just x)
     close = return Nothing
 
 -- | Look at the next value in the stream, if available. This function will not
@@ -164,7 +164,7 @@ peek :: Monad m => Sink a m (Maybe a)
 peek =
     NeedInput push close
   where
-    push x = Done (Just x) (Just x)
+    push x = Leftover (Done (Just x)) x
     close = return Nothing
 
 -- | Apply a transformation to all values in a stream.
@@ -324,14 +324,16 @@ sourceNull = mempty
 --
 -- Since 0.3.0
 zip :: Monad m => Source m a -> Source m b -> Source m (a, b)
-zip (Done _ ()) (Done _ ()) = Done Nothing ()
-zip (Done _ ()) (HaveOutput _ close _) = PipeM (close >> return (Done Nothing ())) close
-zip (HaveOutput _ close _) (Done _ ()) = PipeM (close >> return (Done Nothing ())) close
-zip (Done _ ()) (PipeM _ close) = PipeM (close >> return (Done Nothing ())) close
-zip (PipeM _ close) (Done _ ()) = PipeM (close >> return (Done Nothing ())) close
+zip (Done ()) (Done ()) = Done ()
+zip (Done ()) (HaveOutput _ close _) = PipeM (close >> return (Done ())) close
+zip (HaveOutput _ close _) (Done ()) = PipeM (close >> return (Done ())) close
+zip (Done ()) (PipeM _ close) = PipeM (close >> return (Done ())) close
+zip (PipeM _ close) (Done ()) = PipeM (close >> return (Done ())) close
 zip (PipeM mx closex) (PipeM my closey) = PipeM (liftM2 zip mx my) (closex >> closey)
 zip (PipeM mx closex) y@(HaveOutput _ closey _) = PipeM (liftM (\x -> zip x y) mx) (closex >> closey)
 zip x@(HaveOutput _ closex _) (PipeM my closey) = PipeM (liftM (\y -> zip x y) my) (closex >> closey)
 zip (HaveOutput srcx closex x) (HaveOutput srcy closey y) = HaveOutput (zip srcx srcy) (closex >> closey) (x, y)
 zip (NeedInput _ c) right = zip c right
 zip left (NeedInput _ c) = zip left c
+zip (Leftover left _) right = zip left right
+zip left (Leftover right _) = zip left right

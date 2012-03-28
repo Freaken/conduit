@@ -18,7 +18,7 @@ import Control.Monad.Trans.Resource (MonadActive (monadActive))
 --
 -- Since 0.3.0
 lazyConsume :: (MonadBaseControl IO m, MonadActive m) => Source m a -> m [a]
-lazyConsume (Done _ ()) = return []
+lazyConsume (Done ()) = return []
 lazyConsume (HaveOutput src _ x) = do
     xs <- lazyConsume src
     return $ x : xs
@@ -28,3 +28,4 @@ lazyConsume (PipeM msrc _) = liftBaseOp_ unsafeInterleaveIO $ do
         then msrc >>= lazyConsume
         else return []
 lazyConsume (NeedInput _ c) = lazyConsume c
+lazyConsume (Leftover p _) = lazyConsume p

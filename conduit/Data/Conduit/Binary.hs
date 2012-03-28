@@ -81,7 +81,7 @@ sourceHandle h =
     pull = do
         bs <- liftIO (S.hGetSome h 4096)
         if S.null bs
-            then return $ Done Nothing ()
+            then return $ Done ()
             else return $ HaveOutput src close bs
 
     close = return ()
@@ -155,7 +155,7 @@ sourceFileRange fp offset count = PipeM
         if S.null bs
             then do
                 release key
-                return $ Done Nothing ()
+                return $ Done ()
             else do
                 let src = PipeM
                         (pullUnlimited handle key)
@@ -170,7 +170,7 @@ sourceFileRange fp offset count = PipeM
             if S.null bs
                 then do
                     release key
-                    return $ Done Nothing ()
+                    return $ Done ()
                 else do
                     let src = PipeM
                             (pullLimited (toInteger c') handle key)
@@ -235,7 +235,7 @@ head =
             Nothing -> NeedInput push close
             Just (w, bs') ->
                 let lo = if S.null bs' then Nothing else Just bs'
-                 in Done lo (Just w)
+                 in maybe id (flip Leftover) lo $ Done (Just w)
     close = return Nothing
 
 -- | Return all bytes while the predicate returns @True@.
@@ -252,7 +252,7 @@ takeWhile p =
                     then r
                     else HaveOutput r (return ()) x
         | otherwise =
-            let f = Done (Just y) ()
+            let f = Leftover (Done ()) y
              in if S.null x
                     then f
                     else HaveOutput f (return ()) x
@@ -269,7 +269,7 @@ dropWhile p =
   where
     push bs
         | S.null bs' = NeedInput push close
-        | otherwise  = Done (Just bs') ()
+        | otherwise  = Leftover (Done ()) bs'
       where
         bs' = S.dropWhile p bs
     close = return ()
