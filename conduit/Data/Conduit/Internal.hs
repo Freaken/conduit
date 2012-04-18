@@ -25,6 +25,9 @@ module Data.Conduit.Internal
     , mapOutput
     , runFinalize
     , addCleanup
+      -- ** Optimized versions
+    , yieldMany
+    , yieldBind
     ) where
 
 import Control.Applicative (Applicative (..), (<$>))
@@ -35,6 +38,7 @@ import Control.Monad.Base (MonadBase (liftBase))
 import Data.Void (Void, absurd)
 import Data.Monoid (Monoid (mappend, mempty))
 import Control.Monad.Trans.Resource
+import qualified GHC.Exts
 
 -- | A cleanup action to be performed.
 --
@@ -327,6 +331,35 @@ runFinalize (FinalizeM mr) = mr
 yield :: Monad m => o -> Pipe i o m ()
 yield = HaveOutput (Done Nothing ()) (FinalizePure ())
 
+-- | Yield a value downstream and continue with another pipe.
+--
+-- > yieldBind o pipe = yield o >> pipe
+--
+-- However, this function is more efficient.
+--
+-- Since 0.4.2
+yieldBind :: Monad m => o -> Pipe i o m r -> Pipe i o m r
+yieldBind o p = HaveOutput p (pipeClose p) o
+{-# INLINE yieldBind #-}
+
+-- | Yields a list of values downstream.
+--
+-- This is equivalent to @mapM_ yield@, but is more efficient.
+--
+-- Since 0.4.2
+yieldMany :: Monad m => [o] -> Pipe i o m ()
+yieldMany =
+    go
+  where
+    go [] = Done Nothing ()
+    go (o:os) = HaveOutput (go os) (return ()) o
+{-# INLINE yieldMany #-}
+
+{-# RULES
+    "yield/bind" forall o (p :: Pipe i o m r). yield o >> p = yieldBind o p
+  ; "mapM_ yield" mapM_ yield = yieldMany
+  #-}
+
 -- | Wait for a single input value from upstream, and remove it from the
 -- stream. Returns @Nothing@ if no more data is available.
 --
@@ -398,3 +431,13 @@ addCleanup cleanup (PipeM msrc close) = PipeM
 addCleanup cleanup (NeedInput p c) = NeedInput
     (addCleanup cleanup . p)
     (addCleanup cleanup c)
+
+-- | The equivalent of @GHC.Exts.build@ for @Pipe@.
+--
+-- Since 0.4.2
+build :: Monad m => (forall b. (o -> b -> b) -> b -> b) -> Pipe i o m ()
+build g = g (\o p -> HaveOutput p (return ()) o) (return ())
+
+{-# RULES
+    "yieldMany/build" forall (f :: (forall b. (a -> b -> b) -> b -> b)). yieldMany (GHC.Exts.build f) = build f
+  #-}

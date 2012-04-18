@@ -1,4 +1,5 @@
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE RankNTypes #-}
 -- | Higher-level functions to interact with the elements of a stream. Most of
 -- these are based on list functions.
 --
@@ -54,7 +55,7 @@ import Prelude
     , Enum (succ), Eq
     )
 import Data.Conduit
-import Data.Conduit.Internal (pipeClose, runFinalize)
+import Data.Conduit.Internal (pipeClose, runFinalize, yieldMany)
 import Data.Monoid (mempty)
 import Data.Void (absurd)
 import Control.Monad (liftM, liftM2)
@@ -139,8 +140,7 @@ mapM_ f =
 --
 -- Since 0.3.0
 sourceList :: Monad m => [a] -> Source m a
-sourceList [] = Done Nothing ()
-sourceList (x:xs) = HaveOutput (sourceList xs) (return ()) x
+sourceList = yieldMany
 
 -- | Ignore a certain number of values in the stream. This function is
 -- semantically equivalent to:
