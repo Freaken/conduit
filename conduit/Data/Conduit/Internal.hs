@@ -353,7 +353,7 @@ yieldMany =
   where
     go [] = Done Nothing ()
     go (o:os) = HaveOutput (go os) (return ()) o
-{-# INLINE yieldMany #-}
+{-# INLINE [1] yieldMany #-}
 
 {-# RULES
     "yield/bind" forall o (p :: Pipe i o m r). yield o >> p = yieldBind o p
